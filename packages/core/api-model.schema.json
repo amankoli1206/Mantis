@@ -1,0 +1,345 @@
+{
+  "$ref": "#/definitions/ApiModel",
+  "definitions": {
+    "ApiModel": {
+      "type": "object",
+      "properties": {
+        "modelVersion": {
+          "type": "string",
+          "const": "1.0.0"
+        },
+        "project": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "framework": {
+              "type": "string",
+              "default": "express"
+            },
+            "language": {
+              "type": "string",
+              "default": "javascript"
+            },
+            "root": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": ["root"],
+          "additionalProperties": false
+        },
+        "metadata": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "scannedAt": {
+              "type": "string",
+              "minLength": 1
+            },
+            "rootDir": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "additionalProperties": false
+        },
+        "endpoints": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "method": {
+                "type": "string",
+                "enum": ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"]
+              },
+              "path": {
+                "type": "string",
+                "minLength": 1
+              },
+              "description": {
+                "type": "string"
+              },
+              "auth": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": ["none", "bearer", "apiKey", "cookie", "custom", "unknown"]
+                  },
+                  "details": {
+                    "type": "string"
+                  }
+                },
+                "required": ["type"],
+                "additionalProperties": false,
+                "default": {
+                  "type": "unknown"
+                }
+              },
+              "effect": {
+                "type": "string",
+                "enum": ["read", "write", "destructive", "unknown"],
+                "default": "unknown"
+              },
+              "params": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "in": {
+                      "type": "string",
+                      "enum": ["path", "query", "header"]
+                    },
+                    "required": {
+                      "type": "boolean",
+                      "default": false
+                    },
+                    "schema": {
+                      "type": "object",
+                      "additionalProperties": {}
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "provenance": {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "type": "string",
+                          "enum": ["literal", "resolved", "inferred", "unresolved"]
+                        },
+                        "filePath": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "line": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "column": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "snippet": {
+                          "type": "string"
+                        }
+                      },
+                      "required": ["kind", "filePath", "line"],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": ["name", "in"],
+                  "additionalProperties": false
+                },
+                "default": []
+              },
+              "requestBody": {
+                "type": "object",
+                "properties": {
+                  "contentType": {
+                    "type": "string",
+                    "default": "application/json"
+                  },
+                  "schema": {
+                    "type": "object",
+                    "additionalProperties": {}
+                  },
+                  "required": {
+                    "type": "boolean",
+                    "default": false
+                  },
+                  "description": {
+                    "type": "string"
+                  },
+                  "provenance": {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "enum": ["literal", "resolved", "inferred", "unresolved"]
+                      },
+                      "filePath": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "line": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "column": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "snippet": {
+                        "type": "string"
+                      }
+                    },
+                    "required": ["kind", "filePath", "line"],
+                    "additionalProperties": false
+                  }
+                },
+                "additionalProperties": false
+              },
+              "responses": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "integer",
+                      "minimum": 100,
+                      "maximum": 599
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "schema": {
+                      "type": "object",
+                      "additionalProperties": {}
+                    },
+                    "contentType": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["statusCode"],
+                  "additionalProperties": false
+                },
+                "default": []
+              },
+              "middleware": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "default": []
+              },
+              "provenance": {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": ["literal", "resolved", "inferred", "unresolved"]
+                  },
+                  "filePath": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "line": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "column": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "snippet": {
+                    "type": "string"
+                  }
+                },
+                "required": ["kind", "filePath", "line"],
+                "additionalProperties": false
+              },
+              "confidence": {
+                "type": "string",
+                "enum": ["confirmed", "uncertain"],
+                "default": "confirmed"
+              },
+              "confidenceReason": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "enum": ["DG-P001", "DG-R001", "DG-R002", "DG-R003"]
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": ["id", "method", "path", "provenance"],
+            "additionalProperties": false
+          }
+        },
+        "diagnostics": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "enum": ["DG-P001", "DG-R001", "DG-R002", "DG-R003"]
+              },
+              "severity": {
+                "type": "string",
+                "enum": ["error", "warning", "info"]
+              },
+              "message": {
+                "type": "string",
+                "minLength": 1
+              },
+              "file": {
+                "type": "string"
+              },
+              "line": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "column": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "provenance": {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": ["literal", "resolved", "inferred", "unresolved"]
+                  },
+                  "filePath": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "line": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "column": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "snippet": {
+                    "type": "string"
+                  }
+                },
+                "required": ["kind", "filePath", "line"],
+                "additionalProperties": false
+              },
+              "details": {
+                "type": "object",
+                "additionalProperties": {}
+              }
+            },
+            "required": ["code", "severity", "message"],
+            "additionalProperties": false
+          },
+          "default": []
+        }
+      },
+      "required": ["modelVersion", "endpoints"],
+      "additionalProperties": false
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}
