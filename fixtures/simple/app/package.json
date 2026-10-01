@@ -1,0 +1,9 @@
+{
+  "name": "simple-fixture",
+  "version": "1.0.0",
+  "description": "Tiny single-file Express app used as a DevGuard scanner fixture.",
+  "main": "app.js",
+  "dependencies": {
+    "express": "^4.18.2"
+  }
+}

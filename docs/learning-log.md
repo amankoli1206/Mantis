@@ -118,3 +118,83 @@ Every diagnostic captures `code`, `severity`, `message`, and source location (`f
 ### Next Step Preview (Per `docs/PLAN.md`)
 
 - **Step 3: Fixtures first**: Build `fixtures/simple` and `fixtures/nested-routers` with hand-written `expected.model.json` files and validate them against the schema.
+
+---
+
+## Step 3: Fixtures First — Writing Expected Output Before the Code
+
+### Overview
+
+In Step 3, we did **no scanner work**. Instead, we built two human-readable Express fixture apps and hand-wrote their expected API Model output (`expected.model.json`) *before* any parsing code exists. We also wrote two test files that verify the golden files are internally consistent.
+
+---
+
+### 🧠 Core Concept: Why Write Expected Output Before the Code?
+
+This is the **golden-file discipline**: write down exactly what a correct implementation must produce, *before building the implementation*, for several compounding reasons:
+
+1. **Forces clarity on the contract.** You cannot hand-write a golden file without having resolved every ambiguous schema question (what does `provenance.kind` mean for a chained route? what does `path` contain when the expression is a variable?). The act of writing the golden file is itself a design activity.
+
+2. **Makes tests falsifiable.** A test written *after* the code is working tends to assert whatever the code already returns. A test written from a golden file written *before* the code asserts what the code *should* return — it can actually fail when the implementation is wrong.
+
+3. **Baseline for regression.** Once the scanner exists and produces output for a fixture, diffing against the golden file is the primary signal that something changed. If the diff is expected (schema bump, new field), a human reviews and approves the update. If it's unexpected, the CI gate fails.
+
+4. **Documentation that stays in sync.** Unlike a doc comment that can drift, a golden file is *executed* on every CI run against real fixture code. The provenance line-check test even verifies that every `line` field in the golden file refers to a real, non-empty line in the fixture source — so the golden file cannot silently become wrong as the fixture code changes.
+
+5. **Step 4 can be developed incrementally.** The scanner team (or the next AI step) can run `pnpm test` immediately and see 0/44 fixture endpoints matching — then incrementally reach 44/44 without needing to invent the "correct answer" themselves.
+
+---
+
+### Fixture Design Decisions
+
+#### `fixtures/simple` — Single file, 6 routes
+
+- All routes use `app.get/post/put/delete` with **literal** string paths → `provenance.kind: "literal"`.
+- `effect` is inferred from the HTTP verb: GET → `read`, POST/PUT → `write`, DELETE → `destructive`.
+- `auth` is always `{ type: "unknown" }` — no middleware is visible.
+- `requestBody.provenance` is `kind: "inferred"` because we read from `req.body.email` (not from a schema declaration).
+
+#### `fixtures/nested-routers` — 3 files, 5 routes
+
+- Routes declared on a `express.Router()` and mounted with `app.use('/api', router)` → full path is concatenated at analysis time → `provenance.kind: "resolved"`.
+- `router.route('/users').get(...).post(...)` chaining: each `.get()` and `.post()` call is a separate endpoint; the provenance `line` points to the line of the `.get(` or `.post(` call (not the `router` or `.route(` line).
+- One route uses a **runtime variable** as the path argument (`router.get(PRODUCT_DETAIL_PATH, ...)`). This is the uncertain case:
+  - `confidence: "uncertain"`, `confidenceReason: "DG-R003"`
+  - `provenance.kind: "unresolved"`
+  - `path` stores the placeholder `"/api/products/<PRODUCT_DETAIL_PATH>"` so the endpoint is still representable in the model.
+  - A `DG-R003` diagnostic is emitted pointing to the exact line.
+
+#### Provenance Line Integrity
+
+The `provenance-line-check.test.ts` test walks every `provenance` entry (endpoint, params, requestBody) in every golden file and:
+1. Asserts the referenced file exists on disk.
+2. Asserts `line` is within the file's total line count.
+3. Asserts the line is non-empty.
+4. If `snippet` is provided, asserts it matches the actual line (trimmed).
+
+This means updating a fixture file and forgetting to update the golden file will cause a test failure — exactly the intended behaviour.
+
+---
+
+### Configuration Notes
+
+- **ESLint**: `fixtures/*/app/**` added to the ignore list. Fixture apps are plain CJS JavaScript with intentional "undefined" references (e.g. `getDetailSegment()`) that would fail `no-undef`.
+- **TypeScript** (`tsc -b`): Fixture apps are plain `.js` files with no `tsconfig.json`, so they are never visited by `tsc -b` (which only traverses the project references in the root `tsconfig.json`).
+- **Vitest**: Added `vitest.config.ts` at the workspace root to exclude `.kilo/worktrees/**` (Kilo Code git worktrees) from test discovery. Without this, Vitest would try to run tests from a worktree whose `node_modules` is incomplete.
+
+---
+
+### Verification Summary
+
+- `pnpm lint` ✅
+- `pnpm typecheck` ✅
+- `pnpm test` ✅ (10 test files, 44 tests — 20 new fixture tests)
+- `pnpm build` ✅
+- Both golden files validate against `validateModel()` ✅
+- All provenance line references verified against real fixture code ✅
+
+---
+
+### Next Step Preview (Per `docs/PLAN.md`)
+
+- **Step 4: Express detection and file walking**: Detect Express via `package.json` and imports; walk files respecting ignore rules. Done when detection works on all fixtures and a non-Express folder is rejected cleanly.

@@ -4,6 +4,40 @@ This document tracks all day-by-day work, architecture decisions, testing result
 
 ---
 
+## 📅 2026-10-01 — Step 3: Fixtures First (Golden Output Models)
+
+### 🎯 Goal
+
+Build the human-readable Express fixture applications and hand-write their expected API Model outputs (`expected.model.json`) *before* writing any parser/scanner code, verifying that all golden files conform to `validateModel()` and match real source line provenance.
+
+### 🛠️ Work Done
+
+- **Fixture Apps (`fixtures/`)**:
+  - Created [`fixtures/simple`](file:///Users/amankoli/Desktop/DevGuard/fixtures/simple/app/app.js) with 6 routes (GET `/health`, GET `/users`, GET `/users/:id`, POST `/users`, PUT `/users/:id`, DELETE `/users/:id`), path params, and body reads (`req.body.email`).
+  - Created [`fixtures/nested-routers`](file:///Users/amankoli/Desktop/DevGuard/fixtures/nested-routers/app/app.js) split across 3 files with `express.Router()`, `app.use('/api', router)`, `router.route().get().post()` chaining, and 1 dynamic path route triggering `DG-R003`.
+  - Added readable `package.json` files listing Express dependencies in both fixture apps (uninstalled, readable only).
+- **Hand-Written Golden Models**:
+  - Created [`fixtures/simple/expected.model.json`](file:///Users/amankoli/Desktop/DevGuard/fixtures/simple/expected.model.json) with 6 confirmed endpoints and zero diagnostics.
+  - Created [`fixtures/nested-routers/expected.model.json`](file:///Users/amankoli/Desktop/DevGuard/fixtures/nested-routers/expected.model.json) with 5 endpoints (4 confirmed, 1 uncertain with `DG-R003`) and 1 diagnostic.
+- **Fixture Verification Test Suite**:
+  - Implemented [`fixtures/__tests__/golden-model-validation.test.ts`](file:///Users/amankoli/Desktop/DevGuard/fixtures/__tests__/golden-model-validation.test.ts) verifying all golden files pass `validateModel()`.
+  - Implemented [`fixtures/__tests__/provenance-line-check.test.ts`](file:///Users/amankoli/Desktop/DevGuard/fixtures/__tests__/provenance-line-check.test.ts) verifying every `provenance.line` across endpoints, params, and request bodies exists on disk, is within line bounds, non-empty, and matches code snippets.
+- **Tooling & Config Updates**:
+  - Added `fixtures/*/app/**` to [`eslint.config.js`](file:///Users/amankoli/Desktop/DevGuard/eslint.config.js) ignores.
+  - Created [`vitest.config.ts`](file:///Users/amankoli/Desktop/DevGuard/vitest.config.ts) to filter out worktrees.
+  - Documented concepts and decisions in [`docs/learning-log.md`](file:///Users/amankoli/Desktop/DevGuard/docs/learning-log.md).
+
+### 🧪 Test & Command Verification Status
+
+| Command          | Purpose                             | Status  | Output Details                                      |
+| :--------------- | :---------------------------------- | :-----: | :-------------------------------------------------- |
+| `pnpm lint`      | ESLint check                        | ✅ PASS | 0 errors / 0 warnings                               |
+| `pnpm typecheck` | TypeScript project check (`tsc -b`) | ✅ PASS | 0 type errors across all packages                   |
+| `pnpm test`      | Vitest test runner                  | ✅ PASS | 10 test suites passed (44/44 tests, 20 new fixture tests) |
+| `pnpm build`     | tsup compile ESM + CJS + DTS        | ✅ PASS | Built all 4 packages cleanly                        |
+
+---
+
 ## 📅 2026-09-30 — Step 2: Core API Model, Diagnostics & JSON Schema
 
 ### 🎯 Goal
