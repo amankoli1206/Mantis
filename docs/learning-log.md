@@ -198,3 +198,68 @@ This means updating a fixture file and forgetting to update the golden file will
 ### Next Step Preview (Per `docs/PLAN.md`)
 
 - **Step 4: Express detection and file walking**: Detect Express via `package.json` and imports; walk files respecting ignore rules. Done when detection works on all fixtures and a non-Express folder is rejected cleanly.
+
+---
+
+## Step 4: Express Detection & Deterministic File Walking (`@devguard/adapter-express`)
+
+### Overview
+
+In Step 4, we implemented the framework detection heuristics and filesystem traversal mechanics in `@devguard/adapter-express`. This provides the foundation for Step 5 (AST parsing) by safely and deterministically finding candidate JavaScript source files and verifying whether a project is an Express application.
+
+---
+
+### 🧠 Core Concept: Why File Walking Must Be Deterministic
+
+Static analysis and developer tooling must be **reproducible across machines, operating systems, and executions**. File walking order directly affects downstream AST parsing and module graph construction:
+
+1. **OS-dependent directory iteration**: Different operating systems and filesystems (APFS on macOS, NTFS on Windows, ext4 on Linux) return directory entries (`readdir`) in arbitrary, non-guaranteed orders (often inode order or hash table order).
+2. **Deterministic diagnostics and graph building**: If file `A.js` and file `B.js` both define or export routers, processing them in different orders across CI runs could lead to non-deterministic diagnostic order or module graph resolution races.
+3. **Flaky tests and snapshot stability**: When tests or golden files assert ordered lists of scanned files, routes, or warnings, any non-determinism leads to flaky CI builds.
+4. **Code-point sorting guarantee**: By strictly sorting all file paths using unicode code-point ordering (`a < b ? -1 : a > b ? 1 : 0`), we guarantee byte-for-byte identical output regardless of what OS or filesystem executes DevGuard.
+
+---
+
+### Detection Architecture & Evidence Signals
+
+`detectExpress(projectRoot)` returns rich structured evidence (`DetectionResult`), not just a boolean:
+
+1. **Primary Evidence (`package.json`)**:
+   - Parses `package.json` at project root.
+   - Checks `dependencies.express` → `{ detected: true, signal: 'package.json:dependencies', file: 'package.json' }`.
+   - Checks `devDependencies.express` → `{ detected: true, signal: 'package.json:devDependencies', file: 'package.json' }`.
+2. **Secondary Evidence (Source Imports)**:
+   - If `package.json` is absent or doesn't declare `express`, walks source files and performs lightweight regex search for `require('express')` or `import ... from 'express'`.
+   - Emits `signal: 'source:require'` or `signal: 'source:import'` with the relative source file path.
+3. **Rejection**:
+   - If no evidence matches, returns `{ detected: false, signal: 'none', file: null }`.
+4. **Adapter Wrapper**:
+   - `ExpressAdapter.prototype.detect(projectRoot)` wraps `detectExpress` and returns `boolean` conforming to `FrameworkAdapter`.
+
+---
+
+### Edge Case Handling
+
+- **Symlinks & Circular Loops**: File walker checks `dirent.isSymbolicLink()` and ignores them. It never traverses directory symlinks or file symlinks, preventing infinite recursion and escapes outside the project root.
+- **Huge Files**: Files exceeding `maxFileSizeBytes` (default 1 MB) are skipped from source reading and recorded in `skippedHugeFiles: string[]`.
+- **Ignore Rules**: Standard non-source and build output folders are skipped by default (`node_modules`, `dist`, `build`, `coverage`, `.git`).
+- **Path Normalization**: All paths are converted to root-relative paths using standard forward slashes (`/`), ensuring cross-platform consistency across Windows and POSIX systems.
+
+---
+
+### Verification Summary
+
+- `pnpm lint` ✅ (0 errors, 0 warnings)
+- `pnpm typecheck` ✅ (0 errors across all packages)
+- `pnpm test` ✅ (12 test suites passed, 63/63 tests — 19 new detector & file-walker tests)
+- `pnpm build` ✅ (Clean dual ESM/CJS/DTS builds across all 4 packages)
+- `fixtures/simple` & `fixtures/nested-routers` detected ✅
+- `fixtures/not-express` rejected ✅
+- Package.json-less express and non-express folders handled correctly ✅
+
+---
+
+### Next Step Preview (Per `docs/PLAN.md`)
+
+- **Step 5: Parsing and direct routes**: Parse JavaScript files to AST (tolerant of syntax errors with `DG-P001`); extract `app.get/post/put/patch/delete('/path', ...)` with method, path, file, and line; verify `simple` fixture output matches its golden file.
+

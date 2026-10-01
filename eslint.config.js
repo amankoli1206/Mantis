@@ -11,8 +11,8 @@ export default tseslint.config(
       '**/.turbo/**',
       '**/*.d.ts',
       // Fixture app files are plain CJS JS (not TypeScript). Exclude them from
-      // ESLint so undefined references like getDetailSegment() don't cause lint errors.
-      'fixtures/*/app/**',
+      // ESLint so undefined references and fixture code don't cause lint errors.
+      'fixtures/**',
     ],
   },
   js.configs.recommended,

@@ -39,7 +39,11 @@ importers:
         specifier: ^3.0.5
         version: 3.2.7(@types/node@26.6.3)(supports-color@7.2.0)(tsx@4.23.15)
 
-  packages/adapter-express: {}
+  packages/adapter-express:
+    dependencies:
+      '@devguard/core':
+        specifier: workspace:*
+        version: link:../core
 
   packages/cli: {}
 

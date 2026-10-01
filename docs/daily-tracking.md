@@ -4,6 +4,43 @@ This document tracks all day-by-day work, architecture decisions, testing result
 
 ---
 
+## 📅 2026-10-01 — Step 4: Express Detection & Deterministic File Walking
+
+### 🎯 Goal
+
+Implement Express framework detection (primary `package.json` evidence + secondary source import search) and deterministic, symlink-safe project file walking in `@devguard/adapter-express`.
+
+### 🛠️ Work Done
+
+- **Deterministic File Walker (`walkProjectFiles`)**:
+  - Implemented [`packages/adapter-express/src/file-walker.ts`](file:///Users/amankoli/Desktop/DevGuard/packages/adapter-express/src/file-walker.ts) with unicode code-point ordering.
+  - Supports ignore directories (`node_modules`, `dist`, `build`, `coverage`, `.git`).
+  - Ignores symlinks to prevent directory traversal loops and root escapes.
+  - Checks maximum file size (default 1MB) and records `skippedHugeFiles`.
+  - Normalizes relative paths with forward slashes (`/`).
+- **Express Detector (`detectExpress` & `ExpressAdapter`)**:
+  - Implemented [`packages/adapter-express/src/detector.ts`](file:///Users/amankoli/Desktop/DevGuard/packages/adapter-express/src/detector.ts) returning rich structured `DetectionResult` (`detected`, `signal`, `file`).
+  - Primary evidence: parses `package.json` (`dependencies.express` or `devDependencies.express`).
+  - Secondary evidence: fast text search for `require('express')` or `import ... from 'express'`.
+  - Implemented [`ExpressAdapter`](file:///Users/amankoli/Desktop/DevGuard/packages/adapter-express/src/adapter.ts) implementing `FrameworkAdapter`.
+- **Fixtures & Tests**:
+  - Added [`fixtures/not-express`](file:///Users/amankoli/Desktop/DevGuard/fixtures/not-express) (native Node HTTP app).
+  - Added [`fixtures/no-package-json-express`](file:///Users/amankoli/Desktop/DevGuard/fixtures/no-package-json-express) and [`fixtures/no-package-json-not-express`](file:///Users/amankoli/Desktop/DevGuard/fixtures/no-package-json-not-express).
+  - Added [`detector.test.ts`](file:///Users/amankoli/Desktop/DevGuard/packages/adapter-express/tests/detector.test.ts) (12 tests) and [`file-walker.test.ts`](file:///Users/amankoli/Desktop/DevGuard/packages/adapter-express/tests/file-walker.test.ts) (7 tests).
+- **Documentation**:
+  - Added Step 4 entry with "Why file walking must be deterministic" to [`docs/learning-log.md`](file:///Users/amankoli/Desktop/DevGuard/docs/learning-log.md).
+
+### 🧪 Test & Command Verification Status
+
+| Command          | Purpose                             | Status  | Output Details                                      |
+| :--------------- | :---------------------------------- | :-----: | :-------------------------------------------------- |
+| `pnpm lint`      | ESLint check                        | ✅ PASS | 0 errors / 0 warnings                               |
+| `pnpm typecheck` | TypeScript project check (`tsc -b`) | ✅ PASS | 0 type errors across all packages                   |
+| `pnpm test`      | Vitest test runner                  | ✅ PASS | 12 test suites passed (63/63 tests)                 |
+| `pnpm build`     | tsup compile ESM + CJS + DTS        | ✅ PASS | Built all 4 packages cleanly                        |
+
+---
+
 ## 📅 2026-10-01 — Step 3: Fixtures First (Golden Output Models)
 
 ### 🎯 Goal

@@ -20,6 +20,9 @@
   "files": [
     "dist"
   ],
+  "dependencies": {
+    "@devguard/core": "workspace:*"
+  },
   "scripts": {
     "build": "tsup",
     "typecheck": "tsc --noEmit",
