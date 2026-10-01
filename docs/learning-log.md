@@ -263,3 +263,65 @@ Static analysis and developer tooling must be **reproducible across machines, op
 
 - **Step 5: Parsing and direct routes**: Parse JavaScript files to AST (tolerant of syntax errors with `DG-P001`); extract `app.get/post/put/patch/delete('/path', ...)` with method, path, file, and line; verify `simple` fixture output matches its golden file.
 
+---
+
+## Step 5: AST Parsing & Scope-Aware Direct Route Extraction (`@devguard/adapter-express`)
+
+### Overview
+
+In Step 5, we implemented AST parsing and direct Express route extraction inside `@devguard/adapter-express`. We wired this into `ExpressAdapter.prototype.scan(projectRoot)`, generating a fully validated `ApiModel` that matches all 6 routes in the `fixtures/simple` baseline fixture.
+
+---
+
+### 🧠 Core Concept: What an AST is and Why Scope-Aware Binding Beats Name Matching
+
+#### 1. What is an Abstract Syntax Tree (AST)?
+Source code text is just a stream of characters. An **AST (Abstract Syntax Tree)** is a hierarchical tree data structure produced by a parser (like `@babel/parser`) that represents the syntactic grammar and semantics of the program without whitespace or formatting details. For example, `app.get('/users', handler)` is converted into a `CallExpression` node with a `MemberExpression` callee (`app.get`) and arguments (`'/users'`, `handler`).
+
+#### 2. Why Scope-Aware Binding Beats Simple Name Matching
+A naive static analyzer might look for any identifier literally named `app` or search strings for `.get(`. This leads to severe false positives and false negatives:
+
+- **False Positives (Object Name Collisions)**: A codebase might have `const app = new SlackClient()` or `const app = new VueApp()`. A name-matching scanner would falsely report `app.get('/channel')` as an Express HTTP route.
+- **False Negatives (Alternative Variable Names)**: A developer might write `const server = express()` or `const api = express()`. A name-matching scanner looking only for `app.` would completely miss these endpoints.
+- **Shadowing & Re-declarations**: A local variable `const app = 'my-string'` inside a nested block would confuse a regex or name-based analyzer.
+
+#### 3. How Scope-Aware Binding Works (`@babel/traverse`)
+Babel tracks identifier declarations and lexical scopes. We use a 3-phase analysis:
+1. **Identify Factory**: Find the exact binding representing `express` (e.g. `const express = require('express')` or `import express from 'express'`).
+2. **Track Instances**: Find variable declarations calling that bound factory (`const app = express()` or `const server = express()`), recording the unique `Binding` object.
+3. **Verify References**: When inspecting a method call like `callee.property === 'get'`, we check `path.scope.getBinding(callee.object.name)`. Only if that binding is in our tracked Express app set do we extract the route.
+
+---
+
+### Extraction Pipeline
+
+1. **Parser (`parseFile`)**:
+   - Parses code using `@babel/parser` with `sourceType: 'unambiguous'` (supporting CJS and ESM) and `errorRecovery: true`.
+   - On syntax errors, catches the error and emits a `DG-P001` diagnostic (`severity: 'error'`) with line/column coordinates without crashing the scan.
+2. **Route Extractor (`extractDirectRoutes`)**:
+   - Extracts direct `app.get/post/put/patch/delete/head/options('/path', ...)` routes.
+   - Sets HTTP method and default `effect` (`GET/HEAD/OPTIONS` $\to$ `read`, `POST/PUT/PATCH` $\to$ `write`, `DELETE` $\to$ `destructive`).
+   - Extracts path parameter definitions (`:id` segments $\to$ `in: 'path'`, `required: true`).
+   - Non-literal dynamic path expressions emit `DG-R003` diagnostics and mark endpoints as `uncertain`.
+3. **Scanner (`scanProject` / `ExpressAdapter.scan`)**:
+   - Walks project files, parses ASTs, extracts direct routes, sorts with `sortEndpoints()`, and validates with `validateModel()`.
+
+---
+
+### Verification Summary
+
+- `pnpm lint` ✅ (0 errors, 0 warnings)
+- `pnpm typecheck` ✅ (0 type errors across all packages)
+- `pnpm test` ✅ (15 test suites passed, 74/74 tests — 11 new Step 5 tests)
+- `pnpm build` ✅ (Clean dual ESM/CJS/DTS builds across all 4 packages)
+- Scanned `fixtures/simple/app` extracts all 6 endpoints correctly matching golden file ✅
+- Syntax errors in source files emit `DG-P001` without crashing ✅
+- Non-express objects named `app` are cleanly ignored ✅
+
+---
+
+### Next Step Preview (Per `docs/PLAN.md`)
+
+- **Step 6: Module graph**: Resolve `require()` and `import` across files (relative paths, `index.js`, extensions); track router exports (`module.exports = router`, `export default router`).
+
+

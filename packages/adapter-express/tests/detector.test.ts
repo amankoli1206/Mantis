@@ -130,10 +130,9 @@ describe('Express Detection (detectExpress & ExpressAdapter)', () => {
       expect(await adapter.detect('/non-existent-path')).toBe(false);
     });
 
-    it('adapter.scan() throws informative error until Step 5', async () => {
-      await expect(adapter.scan(simpleFixture)).rejects.toThrow(
-        /ExpressAdapter.scan is not implemented yet/
-      );
+    it('adapter.scan() scans and returns ApiModel for express fixture', async () => {
+      const model = await adapter.scan(simpleFixture);
+      expect(model.endpoints).toHaveLength(6);
     });
   });
 });

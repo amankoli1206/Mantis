@@ -21,11 +21,17 @@
     "dist"
   ],
   "dependencies": {
+    "@babel/parser": "^7.29.9",
+    "@babel/traverse": "^7.29.8",
+    "@babel/types": "^7.29.8",
     "@devguard/core": "workspace:*"
   },
   "scripts": {
     "build": "tsup",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
+  },
+  "devDependencies": {
+    "@types/babel__traverse": "^7.28.0"
   }
 }

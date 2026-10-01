@@ -1,5 +1,6 @@
 import type { ApiModel, FrameworkAdapter } from '@devguard/core';
 import { detectExpress } from './detector.js';
+import { scanProject } from './scanner.js';
 
 export class ExpressAdapter implements FrameworkAdapter {
   readonly name = 'adapter-express';
@@ -13,10 +14,9 @@ export class ExpressAdapter implements FrameworkAdapter {
   }
 
   /**
-   * Static analysis scanner for Express applications (implemented in Step 5+).
+   * Static analysis scanner for Express applications.
    */
   async scan(projectRoot: string): Promise<ApiModel> {
-    void projectRoot;
-    throw new Error('ExpressAdapter.scan is not implemented yet (scheduled for Step 5).');
+    return scanProject(projectRoot);
   }
 }
