@@ -31,6 +31,9 @@ jobs:
       - name: Run linter
         run: pnpm lint
 
+      - name: Build @devguard/core
+        run: pnpm --filter @devguard/core build
+
       - name: Run typecheck
         run: pnpm typecheck
 
