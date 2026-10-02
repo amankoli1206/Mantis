@@ -324,4 +324,72 @@ Babel tracks identifier declarations and lexical scopes. We use a 3-phase analys
 
 - **Step 6: Module graph**: Resolve `require()` and `import` across files (relative paths, `index.js`, extensions); track router exports (`module.exports = router`, `export default router`).
 
+---
+
+## Step 6: Deterministic Module Graph Construction (`@devguard/adapter-express`)
+
+### Overview
+
+In Step 6, we implemented cross-file module resolution and graph construction in `@devguard/adapter-express`. The module graph tracks imports and exports across CommonJS and ESM syntax, maps relative specifiers to real project files (with extension and index probing), distinguishes external dependencies from local files, and handles cyclic dependencies without infinite recursion.
+
+---
+
+### 🧠 Core Concept: What a Module Graph Is and Why Step 7 Can't Work Without It
+
+#### 1. What is a Module Graph?
+A **Module Graph** is a directed graph where:
+- **Nodes** represent source files in the project (`ModuleNode`), each containing its parsed imports and exports.
+- **Edges** represent import/export relationships linking local variable bindings in an importing module to exported identifiers in a target module.
+
+#### 2. Why Step 7 (Router & Mount Resolution) Cannot Work Without It
+In real-world Express applications, routes and routers are rarely defined in a single file:
+- An entry point (`app.js`) declares `const usersRouter = require('./routes/users')` and mounts it with `app.use('/api', usersRouter)`.
+- The child router is declared and populated inside `routes/users.js`, finishing with `module.exports = router;`.
+
+Without a module graph:
+1. **Broken Identifier Links**: Step 5 only analyzes individual files in isolation. In `app.js`, it sees `app.use('/api', usersRouter)` but has no idea what `usersRouter` is or where its route handlers live.
+2. **Missing Mount Prefixes**: Step 5 analyzing `routes/users.js` in isolation would see `router.get('/users', ...)` and extract `/users` without the `/api` mount prefix defined in `app.js`.
+3. **Multi-level Router Nesting**: Real apps mount routers inside routers (e.g. `app.use('/api/v1', apiRouter)` -> `apiRouter.use('/users', usersRouter)` -> `usersRouter.get('/:id', ...)`). Tracing this chain of prefix concatenations requires traversing the directed edges of the module graph from entry points down to leaf routers.
+4. **Resilience to Imports & Re-exports**: By tracking exact local bindings, imported names, and exported names across files, Step 7 can unambiguously follow router objects regardless of variable renames (`const { router: uRouter } = require('./users')`).
+
+---
+
+### Resolution Pipeline & Semantics
+
+1. **Specifier Resolution (`resolveSpecifier`)**:
+   - Bare specifiers (e.g., `'express'`, `'node:path'`, `@org/pkg`) $\to$ marked `isExternal: true, sourcePath: null` and not followed.
+   - Relative specifiers (`./`, `../`) $\to$ resolved from the directory of the importing file.
+   - Candidate probing order: exact path $\to$ `.js`, `.cjs`, `.mjs` $\to$ `<dir>/index.js`, `<dir>/index.cjs`, `<dir>/index.mjs`.
+   - Security check: Never resolves outside the project root directory.
+2. **Diagnostics for Unresolved / Dynamic Specifiers**:
+   - Missing relative files emit `DG-R001` (`severity: 'warning'`) with file and line.
+   - Dynamic `require(variable)` or `require(expr)` calls emit `DG-R001` with file and line.
+   - The scan never throws or crashes on missing or dynamic imports.
+3. **Exports Tracking**:
+   - CommonJS: `module.exports = x`, `module.exports = { a, b }`, `exports.a = x`, `module.exports.a = x`.
+   - ESM: `export default x`, `export { a, b }`, `export const a = ...`, `export function foo() {}`, `export class Bar {}`.
+4. **Deterministic Ordering**:
+   - Module nodes, imports, exports, and diagnostics are sorted by unicode code points and source line numbers.
+5. **Cycle Tolerance**:
+   - Node construction is file-isolated into a `Map<string, ModuleNode>`, guaranteeing instant termination on cyclic requires.
+
+---
+
+### Verification Summary
+
+- `pnpm lint` ✅ (0 errors, 0 warnings)
+- `pnpm typecheck` ✅ (0 type errors across all packages)
+- `pnpm test` ✅ (16 test suites passed, 83/83 tests — 9 new Step 6 module-graph tests)
+- `pnpm build` ✅ (Clean dual ESM/CJS/DTS builds across all 4 packages)
+- `fixtures/nested-routers` correctly links `app.js` to `routes/users.js` and `routes/products.js` ✅
+- Directory index files and extensions resolved properly ✅
+- Cyclic imports terminate safely ✅
+
+---
+
+### Next Step Preview (Per `docs/PLAN.md`)
+
+- **Step 7: Router and mount resolution**: Trace `express.Router()`, `app.use('/prefix', router)`, nested router mounts, prefix concatenation, `router.route()` chaining, and constant propagation.
+
+
 
