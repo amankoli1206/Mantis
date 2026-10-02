@@ -84,7 +84,7 @@ describe('Express Scanner (scanProject & ExpressAdapter.scan)', () => {
 
       // Captured DG-P001 diagnostic for broken file
       expect(model.diagnostics.length).toBeGreaterThan(0);
-      const parseDiag = model.diagnostics.find((d) => d.code === 'DG-P001');
+      const parseDiag = model.diagnostics.find((d: { code: string }) => d.code === 'DG-P001');
       expect(parseDiag).toBeDefined();
       expect(parseDiag!.file).toContain('broken.js');
     } finally {

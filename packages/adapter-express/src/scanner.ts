@@ -98,7 +98,7 @@ export async function scanProject(projectRoot: string, options: ScanOptions = {}
   const validationResult = validateModel(model);
   if (!validationResult.success) {
     throw new Error(
-      `Generated ApiModel failed schema validation:\n${validationResult.errors.map((e) => `  - ${e.path}: ${e.message}`).join('\n')}`
+      `Generated ApiModel failed schema validation:\n${validationResult.errors.map((e: { path: string; message: string }) => `  - ${e.path}: ${e.message}`).join('\n')}`
     );
   }
 

@@ -7,7 +7,6 @@
     "lib": ["ES2022"],
     "types": ["node"],
     "strict": true,
-    "noEmit": true,
     "sourceMap": true,
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
