@@ -142,4 +142,95 @@ describe('Route Extractor (extractDirectRoutes)', () => {
     expect(diagnostics[0]!.file).toBe('src/dynamic.js');
     expect(diagnostics[0]!.line).toBe(4);
   });
+
+  it('correctly resolves single-file router instances and app.use() mounts', () => {
+    const code = [
+      "const express = require('express');",
+      'const app = express();',
+      'const apiRouter = express.Router();',
+      "apiRouter.get('/users', (req, res) => {});",
+      "app.use('/api', apiRouter);",
+      'const rootRouter = require("express").Router();',
+      "rootRouter.post('/items', (req, res) => {});",
+      'app.use(rootRouter);',
+    ].join('\n');
+
+    const { ast } = parseFile(code, 'src/app.js');
+    expect(ast).not.toBeNull();
+
+    const { endpoints, diagnostics } = extractDirectRoutes(ast!, 'src/app.js', code);
+
+    expect(diagnostics).toEqual([]);
+    expect(endpoints).toHaveLength(2);
+
+    expect(endpoints.find((e) => e.id === 'GET /api/users')).toMatchObject({
+      id: 'GET /api/users',
+      method: 'GET',
+      path: '/api/users',
+      provenance: {
+        kind: 'resolved',
+        line: 4,
+      },
+      confidence: 'confirmed',
+    });
+
+    expect(endpoints.find((e) => e.id === 'POST /items')).toMatchObject({
+      id: 'POST /items',
+      method: 'POST',
+      path: '/items',
+      provenance: {
+        kind: 'resolved',
+        line: 7,
+      },
+      confidence: 'confirmed',
+    });
+  });
+
+  it('flags unmounted routers as uncertain with DG-R002 diagnostic', () => {
+    const code = [
+      "const express = require('express');",
+      'const app = express();',
+      'const orphanRouter = express.Router();',
+      "orphanRouter.get('/orphan', (req, res) => {});",
+    ].join('\n');
+
+    const { ast } = parseFile(code, 'src/app.js');
+    expect(ast).not.toBeNull();
+
+    const { endpoints, diagnostics } = extractDirectRoutes(ast!, 'src/app.js', code);
+
+    expect(diagnostics).toHaveLength(1);
+    expect(diagnostics[0]!.code).toBe('DG-R002');
+    expect(diagnostics[0]!.line).toBe(3);
+
+    expect(endpoints).toHaveLength(1);
+    expect(endpoints[0]).toMatchObject({
+      id: 'GET /orphan',
+      path: '/orphan',
+      confidence: 'uncertain',
+      confidenceReason: 'DG-R002',
+      provenance: {
+        kind: 'unresolved',
+        line: 4,
+      },
+    });
+  });
+
+  it('ignores variables named "router" that are NOT initialized with express.Router()', () => {
+    const code = [
+      'class CustomRouter {',
+      '  get(path, handler) {}',
+      '}',
+      'const router = new CustomRouter();',
+      "router.get('/fake', () => {});",
+    ].join('\n');
+
+    const { ast } = parseFile(code, 'src/custom.js');
+    expect(ast).not.toBeNull();
+
+    const { endpoints, diagnostics } = extractDirectRoutes(ast!, 'src/custom.js', code);
+
+    expect(endpoints).toHaveLength(0);
+    expect(diagnostics).toHaveLength(0);
+  });
 });

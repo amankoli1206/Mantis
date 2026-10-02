@@ -391,5 +391,77 @@ Without a module graph:
 
 - **Step 7: Router and mount resolution**: Trace `express.Router()`, `app.use('/prefix', router)`, nested router mounts, prefix concatenation, `router.route()` chaining, and constant propagation.
 
+---
+
+## Step 7a: Single-File Routers & Mounts Resolution (`@devguard/adapter-express`)
+
+### Overview
+
+In Step 7a, we implemented single-file Express router detection and mount resolution in `@devguard/adapter-express`. We identified `express.Router()` and `require('express').Router()` instances via lexical scope bindings, extracted routes defined on routers, resolved `app.use('/prefix', router)` and `app.use(router)` mounts within the same file, and flagged unmounted routers as `uncertain` (`DG-R002`) rather than silently dropping them.
+
+---
+
+### 🧠 Core Concept: Why Prefix Resolution Is a Graph Problem
+
+In Express, endpoints do not exist as flat, independent strings. Instead, the final URL of an endpoint is determined by a **tree (or DAG) of mount prefixes**:
+
+1. **Mount Chains as Graph Edges**:
+   - An Express application or parent router mounts a child router with a path prefix: `app.use('/api', apiRouter)`.
+   - The child router can mount further sub-routers: `apiRouter.use('/v1', v1Router)`.
+   - The leaf router defines the relative handler path: `v1Router.get('/users/:id', ...)`.
+   - The final resolved path `/api/v1/users/:id` is the concatenation of path segments along the path from the root `app` node down to the leaf handler node.
+
+2. **Multiple Mount Points for a Single Router**:
+   - A single router instance can be mounted at multiple prefixes:
+     ```javascript
+     app.use('/api/v1', commonRouter);
+     app.use('/api/v2', commonRouter);
+     ```
+   - In graph terms, the router node has **multiple incoming edges** (in-degree > 1). Static analysis cannot simply mutate the router's routes in-place. It must traverse each incoming edge independently, generating distinct endpoint instances (`GET /api/v1/users` and `GET /api/v2/users`) from the same underlying AST handler definition.
+
+3. **Unmounted & Orphan Subgraphs**:
+   - A router node with in-degree 0 (no incoming `app.use()` edges from a reachable entry point) represents an unmounted / dead router.
+   - Graph reachability analysis immediately identifies these orphan nodes, enabling DevGuard to report them as `confidence: "uncertain"` with reason `DG-R002` instead of guessing or silently dropping them.
+
+4. **Cross-File Edge Traversals (Preview for 7b+)**:
+   - In multi-file projects, the mount edges span across module boundaries via the Module Graph constructed in Step 6. Resolving prefixes across files is therefore a depth-first or topological traversal combining the module dependency graph with the router mount hierarchy.
+
+---
+
+### Resolution Pipeline & Semantics
+
+1. **Scope-Aware Router Identification**:
+   - Matches `express.Router()`, `const { Router } = require('express'); Router()`, and `require('express').Router()`.
+   - Rejects non-express objects named `router` (e.g. `const router = new CustomRouter()`).
+2. **Path Joining & Normalization (`joinPaths`)**:
+   - Handles trailing slashes, empty prefixes, and root `'/'` mounts cleanly without double slashes:
+     - `joinPaths('/api', '/users')` $\to$ `'/api/users'`
+     - `joinPaths('/', '/items/:id')` $\to$ `'/items/:id'`
+     - `joinPaths('', '/orphan')` $\to$ `'/orphan'`
+3. **Mount Resolution**:
+   - `app.use('/prefix', router)` prepends `'/prefix'`.
+   - `app.use(router)` defaults to root prefix `'/'`.
+   - Provenance line is recorded at the `.get(` / `.post(` call line.
+4. **Unmounted Routers (`DG-R002`)**:
+   - Routers with zero mounts emit `DG-R002` (`severity: 'warning'`) and emit their routes with `confidence: "uncertain"`, `confidenceReason: "DG-R002"`, and `provenance.kind: "unresolved"`.
+
+---
+
+### Verification Summary
+
+- `pnpm lint` ✅ (0 errors, 0 warnings)
+- `pnpm typecheck` ✅ (0 type errors across all packages)
+- `pnpm test` ✅ (16 test suites passed, 87/87 tests)
+- `pnpm build` ✅ (Clean dual ESM/CJS/DTS builds across all 4 packages)
+- `fixtures/router-single-file` hand-written golden model validated and matched ✅
+- Existing `fixtures/simple` golden tests pass unchanged ✅
+
+---
+
+### Next Step Preview (Per `docs/PLAN.md`)
+
+- **Step 7b: Cross-file router & mount resolution**: Trace `express.Router()` exported across files via the Module Graph and resolve cross-file `app.use('/prefix', importedRouter)`.
+
+
 
 

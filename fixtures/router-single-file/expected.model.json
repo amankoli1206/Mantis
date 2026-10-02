@@ -1,0 +1,112 @@
+{
+  "modelVersion": "1.0.0",
+  "project": {
+    "name": "router-single-file-fixture",
+    "framework": "express",
+    "language": "javascript",
+    "root": "fixtures/router-single-file/app"
+  },
+  "endpoints": [
+    {
+      "id": "GET /api/users",
+      "method": "GET",
+      "path": "/api/users",
+      "auth": {
+        "type": "unknown"
+      },
+      "effect": "read",
+      "params": [],
+      "responses": [],
+      "middleware": [],
+      "provenance": {
+        "kind": "resolved",
+        "filePath": "fixtures/router-single-file/app/app.js",
+        "line": 7,
+        "snippet": "apiRouter.get('/users', (req, res) => {"
+      },
+      "confidence": "confirmed",
+      "confidenceReason": null
+    },
+    {
+      "id": "POST /api/users",
+      "method": "POST",
+      "path": "/api/users",
+      "auth": {
+        "type": "unknown"
+      },
+      "effect": "write",
+      "params": [],
+      "responses": [],
+      "middleware": [],
+      "provenance": {
+        "kind": "resolved",
+        "filePath": "fixtures/router-single-file/app/app.js",
+        "line": 10,
+        "snippet": "apiRouter.post('/users', (req, res) => {"
+      },
+      "confidence": "confirmed",
+      "confidenceReason": null
+    },
+    {
+      "id": "GET /items/:id",
+      "method": "GET",
+      "path": "/items/:id",
+      "auth": {
+        "type": "unknown"
+      },
+      "effect": "read",
+      "params": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "description": "User identifier extracted from path segment :id.",
+          "provenance": {
+            "kind": "literal",
+            "filePath": "fixtures/router-single-file/app/app.js",
+            "line": 15
+          }
+        }
+      ],
+      "responses": [],
+      "middleware": [],
+      "provenance": {
+        "kind": "resolved",
+        "filePath": "fixtures/router-single-file/app/app.js",
+        "line": 15,
+        "snippet": "v1Router.get('/items/:id', (req, res) => {"
+      },
+      "confidence": "confirmed",
+      "confidenceReason": null
+    },
+    {
+      "id": "GET /orphan",
+      "method": "GET",
+      "path": "/orphan",
+      "auth": {
+        "type": "unknown"
+      },
+      "effect": "read",
+      "params": [],
+      "responses": [],
+      "middleware": [],
+      "provenance": {
+        "kind": "unresolved",
+        "filePath": "fixtures/router-single-file/app/app.js",
+        "line": 27,
+        "snippet": "orphanRouter.get('/orphan', (req, res) => {"
+      },
+      "confidence": "uncertain",
+      "confidenceReason": "DG-R002"
+    }
+  ],
+  "diagnostics": [
+    {
+      "code": "DG-R002",
+      "severity": "warning",
+      "message": "Could not resolve router mounted at \"<unmounted>\" for identifier \"orphanRouter\"",
+      "file": "fixtures/router-single-file/app/app.js",
+      "line": 26
+    }
+  ]
+}

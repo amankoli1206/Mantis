@@ -92,6 +92,41 @@ describe('Express Scanner (scanProject & ExpressAdapter.scan)', () => {
     }
   });
 
+  it('scans fixtures/router-single-file/app and matches its golden model', async () => {
+    const routerFixturePath = path.join(repoRoot, 'fixtures/router-single-file/app');
+    const goldenModelPath = path.join(repoRoot, 'fixtures/router-single-file/expected.model.json');
+
+    const model = await scanProject(routerFixturePath);
+
+    // 1. Model conforms to core ApiModel validation schema
+    const validation = validateModel(model);
+    expect(validation.success).toBe(true);
+
+    // 2. 4 routes extracted (3 confirmed, 1 uncertain for unmounted orphanRouter)
+    expect(model.endpoints).toHaveLength(4);
+    expect(model.diagnostics).toHaveLength(1);
+    expect(model.diagnostics[0]!.code).toBe('DG-R002');
+
+    const expectedGoldenRaw = readFileSync(goldenModelPath, 'utf8');
+    const goldenModel = JSON.parse(expectedGoldenRaw) as ApiModel;
+
+    for (let i = 0; i < goldenModel.endpoints.length; i++) {
+      const expected = goldenModel.endpoints[i]!;
+      const actual = model.endpoints[i]!;
+
+      expect(actual.id).toBe(expected.id);
+      expect(actual.method).toBe(expected.method);
+      expect(actual.path).toBe(expected.path);
+      expect(actual.effect).toBe(expected.effect);
+      expect(actual.confidence).toBe(expected.confidence);
+      expect(actual.confidenceReason).toBe(expected.confidenceReason);
+
+      // Provenance comparison
+      expect(actual.provenance.kind).toBe(expected.provenance.kind);
+      expect(actual.provenance.line).toBe(expected.provenance.line);
+    }
+  });
+
   it('produces 100% deterministic output across repeated runs', async () => {
     const run1 = await scanProject(simpleFixturePath);
     const run2 = await scanProject(simpleFixturePath);
