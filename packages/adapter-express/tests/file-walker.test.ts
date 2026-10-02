@@ -21,6 +21,7 @@ describe('File Walker (walkProjectFiles)', () => {
 
     expect(result.files).toEqual([
       'app.js',
+      'routes/admin.js',
       'routes/products.js',
       'routes/users.js',
     ]);

@@ -21,4 +21,7 @@ router.get('/users/:id', (req, res) => {
   res.json({ id });
 });
 
+// Mount admin sub-router inside usersRouter
+router.use('/admin', require('./admin'));
+
 module.exports = router;

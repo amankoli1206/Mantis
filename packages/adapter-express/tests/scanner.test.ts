@@ -127,11 +127,298 @@ describe('Express Scanner (scanProject & ExpressAdapter.scan)', () => {
     }
   });
 
+  it('scans fixtures/router-cross-file/app and matches its golden model across all export styles', async () => {
+    const crossFileFixturePath = path.join(repoRoot, 'fixtures/router-cross-file/app');
+    const goldenModelPath = path.join(repoRoot, 'fixtures/router-cross-file/expected.model.json');
+
+    const model = await scanProject(crossFileFixturePath);
+
+    // 1. Model conforms to core ApiModel validation schema
+    const validation = validateModel(model);
+    expect(validation.success).toBe(true);
+
+    // 2. Exactly 6 routes extracted, all confirmed with 0 diagnostics
+    expect(model.endpoints).toHaveLength(6);
+    expect(model.diagnostics).toEqual([]);
+
+    const expectedGoldenRaw = readFileSync(goldenModelPath, 'utf8');
+    const goldenModel = JSON.parse(expectedGoldenRaw) as ApiModel;
+
+    for (let i = 0; i < goldenModel.endpoints.length; i++) {
+      const expected = goldenModel.endpoints[i]!;
+      const actual = model.endpoints[i]!;
+
+      expect(actual.id).toBe(expected.id);
+      expect(actual.method).toBe(expected.method);
+      expect(actual.path).toBe(expected.path);
+      expect(actual.effect).toBe(expected.effect);
+      expect(actual.confidence).toBe(expected.confidence);
+      expect(actual.confidenceReason).toBe(expected.confidenceReason);
+
+      // Provenance comparison
+      expect(actual.provenance.kind).toBe(expected.provenance.kind);
+      expect(actual.provenance.filePath).toBe(expected.provenance.filePath);
+      expect(actual.provenance.line).toBe(expected.provenance.line);
+      expect(actual.provenance.snippet).toBe(expected.provenance.snippet);
+    }
+  });
+
+  it('scans fixtures/nested-routers/app and produces confirmed routes for nested routers and chaining', async () => {
+    const nestedFixturePath = path.join(repoRoot, 'fixtures/nested-routers/app');
+    const model = await scanProject(nestedFixturePath);
+
+    const validation = validateModel(model);
+    expect(validation.success).toBe(true);
+
+    // 1. Confirmed route from routes/users.js line 19
+    const usersRoute = model.endpoints.find((e) => e.id === 'GET /api/users/:id');
+    expect(usersRoute).toBeDefined();
+    expect(usersRoute!.confidence).toBe('confirmed');
+    expect(usersRoute!.path).toBe('/api/users/:id');
+
+    // 2. Confirmed route from routes/products.js line 8
+    const productsRoute = model.endpoints.find((e) => e.id === 'GET /api/products');
+    expect(productsRoute).toBeDefined();
+    expect(productsRoute!.confidence).toBe('confirmed');
+    
+    // 3. Chained route: GET /api/users
+    const chainGet = model.endpoints.find((e) => e.id === 'GET /api/users');
+    expect(chainGet).toBeDefined();
+    expect(chainGet!.confidence).toBe('confirmed');
+    expect(chainGet!.provenance.line).toBe(10);
+    
+    // 4. Chained route: POST /api/users
+    const chainPost = model.endpoints.find((e) => e.id === 'POST /api/users');
+    expect(chainPost).toBeDefined();
+    expect(chainPost!.confidence).toBe('confirmed');
+    expect(chainPost!.provenance.line).toBe(13);
+
+    // 5. Nested router: GET /api/admin/metrics
+    const adminMetrics = model.endpoints.find((e) => e.id === 'GET /api/admin/metrics');
+    expect(adminMetrics).toBeDefined();
+    expect(adminMetrics!.confidence).toBe('confirmed');
+    expect(adminMetrics!.provenance.filePath).toContain('admin.js');
+    expect(adminMetrics!.provenance.line).toBe(5);
+  });
+
+  it('emits DG-R002 and confirms nothing when an imported router cannot be resolved', async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'devguard-scan-unresolved-'));
+    try {
+      await fs.writeFile(
+        path.join(tempDir, 'app.js'),
+        `
+        const express = require('express');
+        const missingRouter = require('./non-existent-router');
+        const app = express();
+        app.use('/api', missingRouter);
+        `
+      );
+
+      const model = await scanProject(tempDir);
+
+      // No confirmed routes
+      expect(model.endpoints.filter((e) => e.confidence === 'confirmed')).toHaveLength(0);
+
+      // Emits DG-R001 (unresolved import) and DG-R002 (unresolved mount)
+      expect(model.diagnostics.some((d) => d.code === 'DG-R001')).toBe(true);
+      expect(model.diagnostics.some((d) => d.code === 'DG-R002')).toBe(true);
+    } finally {
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it('detects cyclic router exports, emits DG-R002, and terminates cleanly', async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'devguard-scan-cycle-'));
+    try {
+      await fs.writeFile(
+        path.join(tempDir, 'a.js'),
+        `
+        const express = require('express');
+        module.exports = require('./b');
+        `
+      );
+      await fs.writeFile(
+        path.join(tempDir, 'b.js'),
+        `
+        const express = require('express');
+        module.exports = require('./a');
+        `
+      );
+      await fs.writeFile(
+        path.join(tempDir, 'app.js'),
+        `
+        const express = require('express');
+        const cyclicRouter = require('./a');
+        const app = express();
+        app.use('/cycle', cyclicRouter);
+        `
+      );
+
+      const model = await scanProject(tempDir);
+
+      // No confirmed routes
+      expect(model.endpoints.filter((e) => e.confidence === 'confirmed')).toHaveLength(0);
+
+      // Emits DG-R002 for the cycle
+      const cycleDiag = model.diagnostics.find((d) => d.code === 'DG-R002');
+      expect(cycleDiag).toBeDefined();
+    } finally {
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it('produces 100% deterministic output across repeated runs', async () => {
     const run1 = await scanProject(simpleFixturePath);
     const run2 = await scanProject(simpleFixturePath);
 
     expect(JSON.stringify(run1)).toBe(JSON.stringify(run2));
+  });
+
+  it('handles nested router mounts with plain variable bindings and middleware', async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'devguard-scan-nested-var-'));
+    try {
+      await fs.writeFile(
+        path.join(tempDir, 'sub.js'),
+        `
+        const express = require('express');
+        const router = express.Router();
+        router.get('/info', (req, res) => res.send('info'));
+        module.exports = router;
+        `
+      );
+      await fs.writeFile(
+        path.join(tempDir, 'app.js'),
+        `
+        const express = require('express');
+        const app = express();
+        const subRouter = require('./sub');
+        // mount with middleware
+        app.use('/api', function auth() {}, subRouter);
+        `
+      );
+
+      const model = await scanProject(tempDir);
+      
+      const route = model.endpoints.find(e => e.id === 'GET /api/info');
+      expect(route).toBeDefined();
+      expect(route!.confidence).toBe('confirmed');
+      expect(model.diagnostics.filter(d => d.code === 'DG-R002')).toHaveLength(0);
+    } finally {
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it('correctly resolves diamond-shaped mounts without false DG-R002 cycles', async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'devguard-scan-diamond-'));
+    try {
+      await fs.writeFile(
+        path.join(tempDir, 'shared.js'),
+        `
+        const express = require('express');
+        const router = express.Router();
+        router.get('/data', (req, res) => res.send('data'));
+        module.exports = router;
+        `
+      );
+      await fs.writeFile(
+        path.join(tempDir, 'v1.js'),
+        `
+        const express = require('express');
+        const router = express.Router();
+        const shared = require('./shared');
+        router.use('/shared', shared);
+        module.exports = router;
+        `
+      );
+      await fs.writeFile(
+        path.join(tempDir, 'v2.js'),
+        `
+        const express = require('express');
+        const router = express.Router();
+        const shared = require('./shared');
+        router.use('/shared', shared);
+        module.exports = router;
+        `
+      );
+      await fs.writeFile(
+        path.join(tempDir, 'app.js'),
+        `
+        const express = require('express');
+        const v1 = require('./v1');
+        const v2 = require('./v2');
+        const app = express();
+        app.use('/v1', v1);
+        app.use('/v2', v2);
+        `
+      );
+
+      const model = await scanProject(tempDir);
+      
+      const route1 = model.endpoints.find(e => e.id === 'GET /v1/shared/data');
+      const route2 = model.endpoints.find(e => e.id === 'GET /v2/shared/data');
+      
+      expect(route1).toBeDefined();
+      expect(route2).toBeDefined();
+      expect(model.diagnostics.filter(d => d.code === 'DG-R002')).toHaveLength(0);
+    } finally {
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it('handles unidentifiable router arguments gracefully without crashing', async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'devguard-scan-unidentifiable-'));
+    try {
+      await fs.writeFile(
+        path.join(tempDir, 'app.js'),
+        `
+        const express = require('express');
+        const app = express();
+        const config = require('./config');
+        app.use('/api', config.someUnknownThing);
+        `
+      );
+
+      const model = await scanProject(tempDir);
+      
+      expect(model.endpoints).toHaveLength(0);
+      // We expect DG-R002 because config.someUnknownThing couldn't be resolved to a router
+      const r002s = model.diagnostics.filter(d => d.code === 'DG-R002');
+      expect(r002s.length).toBeGreaterThan(0);
+      expect(r002s[0]!.message).toContain('config.someUnknownThing');
+    } finally {
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it('correctly resolves app.route() chaining', async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'devguard-scan-app-route-'));
+    try {
+      await fs.writeFile(
+        path.join(tempDir, 'app.js'),
+        `
+        const express = require('express');
+        const app = express();
+        app.route('/test')
+           .get((req, res) => res.send('get'))
+           .post((req, res) => res.send('post'));
+        `
+      );
+
+      const model = await scanProject(tempDir);
+      
+      const routeGet = model.endpoints.find(e => e.id === 'GET /test');
+      const routePost = model.endpoints.find(e => e.id === 'POST /test');
+      
+      expect(routeGet).toBeDefined();
+      expect(routeGet!.confidence).toBe('confirmed');
+      expect(routeGet!.provenance.line).toBe(5);
+      
+      expect(routePost).toBeDefined();
+      expect(routePost!.confidence).toBe('confirmed');
+      expect(routePost!.provenance.line).toBe(6);
+    } finally {
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
   });
 
   it('ExpressAdapter.scan() wraps scanProject and produces identical output', async () => {

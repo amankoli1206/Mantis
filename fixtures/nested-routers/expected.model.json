@@ -8,6 +8,25 @@
   },
   "endpoints": [
     {
+      "id": "GET /api/admin/metrics",
+      "method": "GET",
+      "path": "/api/admin/metrics",
+      "description": "Admin metrics route. Path resolved from nested mounts '/api' + '/admin' + '/metrics'.",
+      "auth": { "type": "unknown" },
+      "effect": "read",
+      "params": [],
+      "responses": [],
+      "middleware": [],
+      "provenance": {
+        "kind": "resolved",
+        "filePath": "fixtures/nested-routers/app/routes/admin.js",
+        "line": 5,
+        "snippet": "router.get('/metrics', (req, res) => {"
+      },
+      "confidence": "confirmed",
+      "confidenceReason": null
+    },
+    {
       "id": "GET /api/products",
       "method": "GET",
       "path": "/api/products",

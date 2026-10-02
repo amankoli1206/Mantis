@@ -1,0 +1,132 @@
+{
+  "modelVersion": "1.0.0",
+  "project": {
+    "name": "router-cross-file-fixture",
+    "framework": "express",
+    "language": "javascript",
+    "root": "fixtures/router-cross-file/app"
+  },
+  "endpoints": [
+    {
+      "id": "GET /admin/metrics",
+      "method": "GET",
+      "path": "/admin/metrics",
+      "auth": {
+        "type": "unknown"
+      },
+      "effect": "read",
+      "params": [],
+      "responses": [],
+      "middleware": [],
+      "provenance": {
+        "kind": "resolved",
+        "filePath": "fixtures/router-cross-file/app/routes/admin.js",
+        "line": 6,
+        "snippet": "router.get('/metrics', (req, res) => {"
+      },
+      "confidence": "confirmed",
+      "confidenceReason": null
+    },
+    {
+      "id": "GET /items/all",
+      "method": "GET",
+      "path": "/items/all",
+      "auth": {
+        "type": "unknown"
+      },
+      "effect": "read",
+      "params": [],
+      "responses": [],
+      "middleware": [],
+      "provenance": {
+        "kind": "resolved",
+        "filePath": "fixtures/router-cross-file/app/routes/items.js",
+        "line": 6,
+        "snippet": "itemsRouter.get('/all', (req, res) => {"
+      },
+      "confidence": "confirmed",
+      "confidenceReason": null
+    },
+    {
+      "id": "POST /orders/checkout",
+      "method": "POST",
+      "path": "/orders/checkout",
+      "auth": {
+        "type": "unknown"
+      },
+      "effect": "write",
+      "params": [],
+      "responses": [],
+      "middleware": [],
+      "provenance": {
+        "kind": "resolved",
+        "filePath": "fixtures/router-cross-file/app/routes/orders.js",
+        "line": 6,
+        "snippet": "router.post('/checkout', (req, res) => {"
+      },
+      "confidence": "confirmed",
+      "confidenceReason": null
+    },
+    {
+      "id": "GET /users/profile",
+      "method": "GET",
+      "path": "/users/profile",
+      "auth": {
+        "type": "unknown"
+      },
+      "effect": "read",
+      "params": [],
+      "responses": [],
+      "middleware": [],
+      "provenance": {
+        "kind": "resolved",
+        "filePath": "fixtures/router-cross-file/app/routes/users.js",
+        "line": 6,
+        "snippet": "router.get('/profile', (req, res) => {"
+      },
+      "confidence": "confirmed",
+      "confidenceReason": null
+    },
+    {
+      "id": "GET /v1/ping",
+      "method": "GET",
+      "path": "/v1/ping",
+      "auth": {
+        "type": "unknown"
+      },
+      "effect": "read",
+      "params": [],
+      "responses": [],
+      "middleware": [],
+      "provenance": {
+        "kind": "resolved",
+        "filePath": "fixtures/router-cross-file/app/routes/shared.js",
+        "line": 6,
+        "snippet": "router.get('/ping', (req, res) => {"
+      },
+      "confidence": "confirmed",
+      "confidenceReason": null
+    },
+    {
+      "id": "GET /v2/ping",
+      "method": "GET",
+      "path": "/v2/ping",
+      "auth": {
+        "type": "unknown"
+      },
+      "effect": "read",
+      "params": [],
+      "responses": [],
+      "middleware": [],
+      "provenance": {
+        "kind": "resolved",
+        "filePath": "fixtures/router-cross-file/app/routes/shared.js",
+        "line": 6,
+        "snippet": "router.get('/ping', (req, res) => {"
+      },
+      "confidence": "confirmed",
+      "confidenceReason": null
+    }
+  ],
+  "diagnostics": []
+}

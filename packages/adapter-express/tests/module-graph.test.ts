@@ -63,7 +63,7 @@ describe('Module Graph (packages/adapter-express)', () => {
     expect(usersNode.exports[0]).toEqual({
       exportedName: 'default',
       localName: 'router',
-      line: 24,
+      line: 27,
     });
 
     // Verify routes/products.js export: module.exports = router;

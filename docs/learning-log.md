@@ -462,6 +462,167 @@ In Express, endpoints do not exist as flat, independent strings. Instead, the fi
 
 - **Step 7b: Cross-file router & mount resolution**: Trace `express.Router()` exported across files via the Module Graph and resolve cross-file `app.use('/prefix', importedRouter)`.
 
+---
+
+## Step 7b: Cross-File Router & Mount Resolution (`@devguard/adapter-express`)
+
+### Overview
+
+In Step 7b, we implemented cross-file Express router and mount resolution in `@devguard/adapter-express`. We linked `app.use('/prefix', importedRouter)` mounts across file boundaries using the Module Graph constructed in Step 6, supported all CommonJS and ESM export styles (default exports, named exports in object literals, direct `exports.name` assignments, destructured requires, namespace member access `mod.router`, and one-level re-exports like `module.exports = require('./router')`), detected cycles with explicit `DG-R002` diagnostics without looping or crashing, generated routes correctly when a router is mounted at multiple prefixes, and maintained route provenance at the definition line in the router's source file.
+
+---
+
+### 🧠 Core Concept: How Binding Resolution Crosses File Boundaries
+
+In a single file, variable binding resolution is governed strictly by the AST scope hierarchy: lexical scopes nest inside one another, and resolving an identifier is simply a lookup in the current scope or its parent scopes.
+
+However, once code is organized across multiple files, **lexical scope terminates at the file boundary**:
+
+```text
+File A (app.js)                              File B (routes/users.js)
+┌─────────────────────────────────┐          ┌──────────────────────────────────┐
+│ const usersRouter =             │          │ const router = express.Router(); │
+│   require('./routes/users');    │          │ router.get('/profile', ...);     │
+│                                 │          │                                  │
+│ app.use('/users', usersRouter); │──mount──►│ module.exports = router;         │
+└─────────────────────────────────┘          └──────────────────────────────────┘
+```
+
+To resolve `usersRouter` across this boundary, static analysis must bridge two independent scope trees via a **module contract**:
+
+1. **Import Binding in the Importer Scope**:
+   In `app.js`, scope analysis observes that `usersRouter` is bound to a `require('./routes/users')` call (or ESM `import`). The analyzer extracts the import tuple:
+   $$( \text{importerFile: "app.js"}, \text{localName: "usersRouter"}, \text{specifier: "./routes/users"}, \text{importedName: "default"} )$$
+
+2. **Module Graph Edge Traversal**:
+   The module graph resolves the relative specifier `./routes/users` against `app.js`'s directory, yielding the canonical target file path `routes/users.js`.
+
+3. **Export Binding in the Exporter Scope**:
+   In `routes/users.js`, the analyzer examines the module's export table for an export matching `importedName: "default"`. It identifies:
+   $$\text{module.exports} = \text{router} \implies ( \text{exportedName: "default"}, \text{localName: "router"} )$$
+
+4. **Connecting Export to Abstract Value**:
+   Finally, within `routes/users.js`'s local scope, the analyzer looks up the binding `router`, proving that it was instantiated via `express.Router()`. The mount prefix `'/users'` is then attached to this router instance, resolving the final route `GET /users/profile`.
+
+5. **Indirection, Re-exports, and Cycles**:
+   When files re-export other modules (e.g. `module.exports = require('./admin')`), this resolution chain becomes a recursive graph traversal:
+   $$\text{Mount} \longrightarrow \text{Import} \longrightarrow \text{Target File} \longrightarrow \text{Re-export} \longrightarrow \text{Final Router}$$
+   To guarantee termination in cyclic codebases (e.g., File A exports B, File B exports A), the resolver maintains a `visited` set of `(file, symbol)` pairs. If a cycle is detected, traversal aborts cleanly, emits `DG-R002`, and avoids infinite loops or invalid confirmations.
+
+---
+
+### Implementation Highlights
+
+1. **Comprehensive Import & Export Pairing Support**:
+   - **Default Exports**: `module.exports = router` and `export default router`.
+   - **Named Exports**: `module.exports = { itemsRouter }` and `export { itemsRouter }`.
+   - **Property Assignments**: `exports.ordersRouter = router` and `module.exports.ordersRouter = router`.
+   - **Destructured Requires**: `const { itemsRouter } = require('./routes/items')`.
+   - **Namespace Member Access**: `const ordersMod = require('./routes/orders'); app.use('/orders', ordersMod.ordersRouter)`.
+   - **One-Level Re-exports**: `module.exports = require('./admin')` and `export { a } from './b'`.
+2. **Cycle Protection**:
+   - `visited` set records `Set<"${targetFile}:${exportedName}">`.
+   - Emits `DG-R002` diagnostic (`severity: 'warning'`) when a cycle is encountered, terminating recursion safely.
+3. **Multiple Mounts**:
+   - Routers mounted at multiple prefixes (e.g. `app.use('/v1', shared); app.use('/v2', shared);`) record multiple mounts and emit endpoints under both prefixes (`GET /v1/ping` and `GET /v2/ping`).
+4. **Provenance Integrity**:
+   - Route provenance stays at the `.get(` / `.post(` definition line in the router's own file (`routes/users.js:6`), not at the `app.use` line.
+5. **Fail-Safe Diagnostics**:
+   - Unresolvable imports (`imp.sourcePath === null`), missing exports, dynamic requires, or cycles emit `DG-R002` without crashing.
+
+---
+
+### Verification Summary
+
+- `pnpm lint` ✅ (0 errors, 0 warnings)
+- `pnpm typecheck` ✅ (0 type errors across all packages)
+- `pnpm test` ✅ (16 test suites passed, 106/106 tests)
+  - `fixtures/router-cross-file` hand-written golden model validates and matches all 6 export patterns ✅
+  - `fixtures/nested-routers` confirmed routes match with correct `/api` prefixes (`GET /api/users/:id` and `GET /api/products`) ✅
+  - Unresolved imports emit `DG-R001` and `DG-R002` with 0 confirmed routes ✅
+  - Cyclic router exports detect cycles and emit `DG-R002` ✅
+  - Multiple mounts on same router produce distinct routes under both prefixes ✅
+  - Deterministic output across repeated runs ✅
+- `pnpm build` ✅ (Clean builds across all packages)
+
+---
+
+---
+
+### Next Step Preview (Per `docs/PLAN.md`)
+
+- **Step 7c: Nested routers & route chaining**: Support `router.use()` inside sub-routers and `router.route('/path').get().post()` chaining.
+
+---
+
+## Step 7c: Nested Routers & Route Chaining (`@devguard/adapter-express`)
+
+### Overview
+
+In Step 7c, we implemented resolution for deeply nested routers (`router.use('/prefix', otherRouter)`) spanning across multiple files, and added parsing support for route chaining (`router.route('/path').get().post()`). By moving to a proper graph traversal algorithm (Depth-First Search) for prefix concatenation, DevGuard can now correctly construct endpoints for "diamond" mount structures (where a single router is reached via multiple paths) while still detecting and breaking cycles without false positives.
+
+---
+
+### 🧠 Core Concept: Mount Trees vs Diamond Dependencies
+
+In Step 7b, we handled simple cross-file mounts (e.g. `app` mounts `routerA`). However, Express allows routers to mount other routers, creating deep trees: `app` $\to$ `routerA` $\to$ `routerB` $\to$ `routerC`.
+
+Even more complex is a **Diamond Dependency**:
+```javascript
+// shared.js
+const router = express.Router(); router.get('/ping', ...);
+
+// v1.js
+const shared = require('./shared'); router.use('/shared', shared);
+
+// v2.js
+const shared = require('./shared'); router.use('/shared', shared);
+
+// app.js
+app.use('/v1', require('./v1'));
+app.use('/v2', require('./v2'));
+```
+In this scenario, `shared.js` is reached via two distinct paths:
+1. `app` $\to$ `/v1` $\to$ `/shared` $\to$ `/ping` (`GET /v1/shared/ping`)
+2. `app` $\to$ `/v2` $\to$ `/shared` $\to$ `/ping` (`GET /v2/shared/ping`)
+
+A naive cycle detection mechanism (like a global `visited` set) would flag the second traversal of `shared.js` as a cycle (`DG-R002`) and drop it! To solve this, cycle detection must be **path-specific**: the `visitedPath` set is cloned for each branch in the DFS, allowing a node to be visited multiple times as long as it doesn't appear twice within the *same* branch.
+
+---
+
+### Implementation Highlights
+
+1. **Graph Construction and DFS Traversal**:
+   - `ExtractedMount` was extended with `sourceRouterId` to distinguish between root mounts (`app.use`) and nested mounts (`router.use`).
+   - `resolveCrossFileRoutes` first builds a directed graph of `ResolvedMount` edges.
+   - It then performs a DFS from all `app` mounts down to the leaves, tracking the accumulated prefix and cloning the `visitedPath` set at each step to prevent cycles and support diamond mounts.
+2. **Route Chaining (`.route()`)**:
+   - The AST parser now traverses upwards through `CallExpression` and `MemberExpression` nodes to detect chained method calls (e.g., `app.route('/path').get().post()`).
+   - Line number extraction (`startLine`) correctly resolves to the line of the exact HTTP method call (e.g., `.get(`) rather than the line where `.route(` started, providing precise provenance.
+3. **Graceful Middleware Skipping**:
+   - Express allows middleware before a router: `app.use('/api', authMiddleware, apiRouter)`. 
+   - The parser evaluates all arguments to `use()`. Any identifiers that don't resolve to a known router are gracefully ignored, allowing the scanner to correctly connect the mount edge without being thrown off by middleware functions.
+
+---
+
+### Verification Summary
+
+- `pnpm lint` ✅ (0 errors, 0 warnings)
+- `pnpm typecheck` ✅ (0 type errors across all packages)
+- `pnpm test` ✅ (16 test suites passed, 108/108 tests)
+  - `fixtures/nested-routers` outputs confirmed routes with multi-level `/api/admin/metrics` prefixes ✅
+  - `router.route()` chaining extracts correct line numbers ✅
+  - Diamond-shaped mounts resolve both paths with 0 false-positive `DG-R002` diagnostics ✅
+  - Unidentifiable router arguments and `app.route` chains tested successfully ✅
+- `pnpm build` ✅ (Clean builds across all packages)
+
+---
+
+### Next Step Preview (Per `docs/PLAN.md`)
+
+- **Step 7d: Constant propagation and dynamic path interpolation**: Resolve `const BASE = '/api'; app.use(BASE, router)` and template literals.
+
+
 
 
 
